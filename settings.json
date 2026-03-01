@@ -1,0 +1,9 @@
+{
+	"comparison_type":"text,image",
+	"header_height":80,
+	"footer_height":70,
+	"cv2_threshold":200,
+	"valid_area_size":100,
+	"ssim_pad":0,
+	"pdf_dpi":200
+}
