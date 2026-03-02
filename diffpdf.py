@@ -3,7 +3,6 @@ import sys
 import fitz
 import cv2
 import numpy as np
-import pdfplumber
 import json
 from skimage.metrics import structural_similarity as ssim
 
@@ -14,44 +13,43 @@ def extract_lines_with_bboxes(page_no, page):
 	lines_data = []
 	
 	# ページ内の全ての単語を取得
-	words = page.extract_words()
+	words = page.get_text("words")
 	if not words: return lines_data
 
 	# y軸の座標（top）が近いものを同じ行とみなしてグループ化する
 	# pdfplumberのデフォルトでは、微妙なズレがあるため、
 	# 同じ行として扱うための閾値（tolerance）を考慮すると安定します
 	current_line_text = []
-	current_top = words[0]["top"]
-	line_bboxes = []
 
 	# 単語の端から端までの初期値を設定
-	min_x0, min_top = words[0]["x0"], words[0]["top"]
-	max_x1, max_bottom = words[0]["x1"], words[0]["bottom"]
+	min_x0, min_y0, max_x1, max_y1, text, _, _, _ = words[0]
+	current_top = min_y0
 
-	for word in words:
+	for x0, y0, x1, y1, text, _, _, _ in words:
 		# 前の単語と y座標が大きく離れたら新しい行とみなす
-		if abs(word["top"] - current_top) > 3: 
+		if abs(y0 - current_top) > 3: 
 			# 前の行を保存
 			lines_data.append({
 				"page": page_no + 1,
 				"text": " ".join(current_line_text),
-				"bbox": (min_x0, min_top, max_x1, max_bottom) # (左, 上, 右, 下)
+				"bbox": (min_x0, min_y0, max_x1, max_y1) # (左, 上, 右, 下)
 			})
 			# 新しい行の初期化
-			current_line_text = [word["text"]]
-			current_top = word["top"]
-			min_x0, min_top, max_x1, max_bottom = word["x0"], word["top"], word["x1"], word["bottom"]
+			current_line_text = []
+			current_line_text.append(text)
+			current_top = y0
+			min_x0, min_y0, max_x1, max_y1 = x0, y0, x1, y1
 		else:
-			current_line_text.append(word["text"])
-			min_x0 = min(min_x0, word["x0"])
-			max_x1 = max(max_x1, word["x1"])
-			max_bottom = max(max_bottom, word["bottom"])
+			current_line_text.append(text)
+			min_x0 = min(min_x0, x0)
+			max_x1 = max(max_x1, x1)
+			max_y1 = max(max_y1, y1)
 
 	# 最後の行を追加
 	lines_data.append({
 		"page": page_no + 1,
 		"text": " ".join(current_line_text),
-		"bbox": (min_x0, min_top, max_x1, max_bottom)
+		"bbox": (min_x0, min_y0, max_x1, max_y1)
 	})
 			
 	return lines_data
@@ -130,20 +128,32 @@ def crop_header_footer(img):
 
 
 # ---------------------------------------------------------
-# pdfの指定ページをOpenCVで扱う画像形式に変換
+# fitzページをOpenCVで扱う画像形式に変換
 # ---------------------------------------------------------
-def pdf2BGR(pdf, page_no):
-	img_bgr = None
-	with fitz.open(pdf) as f:
-		# ページをpixmapに変換
-		page = f[page_no]
-		pix = page.get_pixmap(colorspace=fitz.csGRAY)
+def pdf2BGR(page):
+	# ページをpixmapに変換
+	pix = page.get_pixmap(colorspace=fitz.csGRAY)
 
-		# NumPy配列に変換してOpenCV用にBGR形式へ
-		img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-		img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+	# NumPy配列に変換してOpenCV用にBGR形式へ
+	img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
 
-	return img_bgr
+	return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+
+# ---------------------------------------------------------
+# 指定サイズに合わせて画像の右と下に空白を入れる
+# ---------------------------------------------------------
+def pad_image(img, target_height, target_width):
+	h, w = img.shape[:2]
+
+	# 右側と下側の不足サイズ
+	bottom = target_height - h
+	right = target_width - w
+
+	# 拡張
+	padded_img = cv2.copyMakeBorder(img, 0, bottom, 0, right, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+
+	return padded_img
 
 
 # ---------------------------------------------------------
@@ -192,26 +202,26 @@ def disp_image(img1, img2, title):
 # ---------------------------------------------------------
 # イメージの比較
 # ---------------------------------------------------------
-def compare_image(pdf1, pdf2, page_no):
+def compare_image(page_no, page1, page2):
 	# pdf --> BGR に変換
-	img1 = pdf2BGR(pdf1, page_no)
-	img2 = pdf2BGR(pdf2, page_no)
+	img1 = pdf2BGR(page1)
+	img2 = pdf2BGR(page2)
 
 	# ヘッダー・フッター除去
 	img1, header_offset1 = crop_header_footer(img1)
 	img2, header_offset2 = crop_header_footer(img2)
 	#print(f"header_offset1={header_offset1}, header_offset2={header_offset2}")
-	#disp_image(img1, img2, "SSIM")
 
 	# 余白除去
 	img1, trim1 = trim_margin(img1)
 	img2, trim2 = trim_margin(img2)
 	
-	# サイズを小さい画像に合わせて揃える
-	h = min(img1.shape[0], img2.shape[0])
-	w = min(img1.shape[1], img2.shape[1])
-	img1 = img1[:h, :w]
-	img2 = img2[:h, :w]
+	# サイズを大きい画像に合わせて揃える
+	h = max(img1.shape[0], img2.shape[0])
+	w = max(img1.shape[1], img2.shape[1])
+	img1 = pad_image(img1, h, w)
+	img2 = pad_image(img2, h, w)
+	#disp_image(img1, img2, "SSIM")
 
 	# グレースケール化
 	g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
@@ -299,33 +309,48 @@ def check_header_footer_area(pdf, page_no):
 # 差異箇所をオーバレイ
 # ---------------------------------------------------------
 def diff_overlay(page, line_diffs, image_diffs):
-	# ページを画像(Pillow)に変換
-	img = page.to_image(PDF_DPI)
+	# キャンバスを作る
+	text_shape = page.new_shape()
 
-	# テキストの差異をオーバレイ
-	for diff in line_diffs:
-		img.draw_rect(diff, fill=(255,0,0,85), stroke=None)
+	# テキストの差異をキャンバスに描く
+	for bbox in line_diffs:
+		text_shape.draw_rect(bbox)
 
-	# 画像の差異をオーバレイ
-	for diff in image_diffs:
-		img.draw_rect(diff, fill=(0,0,255,85), stroke=None)
+	# キャンバスに描いた図形に色や線のスタイルを適用して描画を確定させる
+	text_shape.finish(fill=(1,0,0), color=None, fill_opacity=0.3)
 
-	return img
+	# ページに反映
+	text_shape.commit()
+
+	# キャンバスを作る
+	image_shape = page.new_shape()
+
+	# 画像の差異をキャンバスに描く
+	for bbox in image_diffs:
+		image_shape.draw_rect(bbox)
+
+	# キャンバスに描いた図形に色や線のスタイルを適用して描画を確定させる
+	image_shape.finish(fill=(0,0,1), color=None, fill_opacity=0.3)
+
+	# ページに反映
+	image_shape.commit()
+
+	return page.get_pixmap()
 
 
 # ---------------------------------------------------------
 # 比較メイン処理
 # ---------------------------------------------------------
 def compare_pdfs(pdf1, pdf2, output_dir):
-	with pdfplumber.open(pdf1) as f1, pdfplumber.open(pdf2) as f2:
+	with fitz.open(pdf1) as doc1, fitz.open(pdf2) as doc2:
 		# ページ数が大きい方を採用
-		max_page_num = max(len(f1.pages), len(f2.pages))
+		max_page_num = max(len(doc1), len(doc2))
 
 		# ページ数分繰り返す
 		for i in range(max_page_num):
 			line_diffs = image_diffs = []
 
-			if i >= len(f1.pages) or i >= len(f2.pages):
+			if i >= len(doc1) or i >= len(doc2):
 				print(f"[SKIP] {i+1} / {max_page_num}  比較ページなし")
 				continue
 
@@ -333,13 +358,13 @@ def compare_pdfs(pdf1, pdf2, output_dir):
 			# テキスト比較
 			# --------------
 			if "text" in COMPARISON_TYPE:
-				line_diffs = compare_line(i, f1.pages[i], f2.pages[i])
+				line_diffs = compare_line(i, doc1[i], doc2[i])
 
 			# --------------
 			# 画像比較
 			# --------------
 			if "image" in COMPARISON_TYPE:
-				image_diffs = compare_image(pdf1, pdf2, i)
+				image_diffs = compare_image(i, doc1[i], doc2[i])
 
 			# ------------------------------------------------------
 			# 画像比較結果からテキスト比較と重複する部分は除外する
@@ -351,10 +376,10 @@ def compare_pdfs(pdf1, pdf2, output_dir):
 			# --------------
 			if len(line_diffs) + len(image_diffs):
 				# pdf2のページをベースにして差異の部分をオーバレイ
-				diff_img = diff_overlay(f2.pages[i], line_diffs, image_diffs)
+				diff_img = diff_overlay(doc2[i], line_diffs, image_diffs)
 				fname = f"{output_dir}/diff_page_{i+1:03}.png"
 				diff_img.save(fname)
-				print(f"[DIFF] {i+1} / {max_page_num}  -->  {fname}")
+				print(f"[DIFF] {i+1} / {max_page_num}  -->	{fname}")
 			else:
 				print(f"[ OK ] {i+1} / {max_page_num}")
 
