@@ -1,9 +1,14 @@
 {
-	"comparison_type":"text,image",
-	"header_height":80,
-	"footer_height":70,
-	"cv2_threshold":200,
-	"valid_area_size":100,
-	"ssim_pad":0,
-	"pdf_dpi":200
+	"common": {
+		"comparison_type": "text,image",
+		"target_page": "",
+	    "header_height": 85,
+    	"footer_height": 72
+	},
+	"text": {
+		"ignore_case": 0
+	},
+	"image": {
+		"valid_area_size": 0
+	}
 }
