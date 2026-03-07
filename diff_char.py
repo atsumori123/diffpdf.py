@@ -1,5 +1,6 @@
 import fitz
 import difflib
+import settings
 
 # ---------------------------------------------------------
 # rawdict から文字と bbox を抽出
@@ -19,9 +20,10 @@ def get_chars(page):
 			continue
 
 		for line in block["lines"]:
+			n = 1
 			for span in line["spans"]:
 				for c in span["chars"]:
-					text = c.get("c")
+					text = c.get("c") if not settings.IGNORE_CASE else c.get("c").lower()
 					bbox = c.get("bbox")
 					if text and bbox and len(bbox) == 4:
 						chars.append((text, bbox))

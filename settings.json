@@ -1,14 +1,14 @@
 {
-	"common": {
-		"comparison_type": "text,image",
-		"target_page": "",
-	    "header_height": 85,
-    	"footer_height": 72
-	},
-	"text": {
-		"ignore_case": 0
-	},
-	"image": {
-		"valid_area_size": 0
-	}
+    "common": {
+        "comparison_type": "text",
+        "target_page": "",
+        "header_height": 79,
+        "footer_height": 75
+    },
+    "text": {
+        "ignore_case": 0
+    },
+    "image": {
+        "valid_area_size": 0
+    }
 }

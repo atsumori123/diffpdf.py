@@ -120,7 +120,7 @@ def compare_pdfs(pdf1_path, pdf2_path, output_dir):
 			line_diffs = image_diffs = []
 
 			if i >= len(doc1) or i >= len(doc2):
-				print(f"{i+1:3} : 比較ページなし")
+				print(f"{i+1:3} : SKIP (No page)")
 				continue
 
 			# --------------
@@ -147,10 +147,10 @@ def compare_pdfs(pdf1_path, pdf2_path, output_dir):
 
 			# 結果の出力
 			if len(added) + len(removed):
-				print(f"{i+1:3} : × --> {output_dir}/diff_page_{i+1:03}.png")
+				print(f"{i+1:3} : DIFF --> {output_dir}/diff_page_{i+1:03}.png")
 				output_diff(i, doc1[i], doc2[i], added, removed, output_dir)
 			else:
-				print(f"{i+1:3} : 〇")
+				print(f"{i+1:3} : OK")
 
 	return
 
@@ -184,8 +184,8 @@ if __name__ == "__main__":
 		print('Arguments are too short')
 		exit()
 
-	# 設定をロード
-	settings.load()
+	# 設定を読み込み
+	settings.read()
 
 	# 出力ディレクトリ作成
 	os.makedirs("output", exist_ok=True)
