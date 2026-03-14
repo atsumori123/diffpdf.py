@@ -20,7 +20,7 @@ class HeaderFooter():
 		img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
 		self.root = tk.Tk()
-		self.root.title('ヘッダーの終了位置をクリックしてください')
+		self.root.title('1/2 回目：ヘッダーの終了位置をクリックしてください')
 
 		# tkinterウィンドウを常に最前面に表示
 		self.root.attributes("-topmost", True)
@@ -61,7 +61,9 @@ class HeaderFooter():
 		# クリック数+1
 		self.click_count += 1
 
-		if self.click_count == 2:
+		if self.click_count == 1:
+			self.root.title('2/2 回目：フッターの開始位置をクリックしてください')
+		elif self.click_count == 2:
 			if header_y > footer_y:
 				messagebox.showinfo("警告", "ヘッダーがフッターよりも下に位置しています。\nやり直してください。")
 			else:
@@ -70,6 +72,7 @@ class HeaderFooter():
 				if result:
 					self.root.destroy()
 					return
+			self.root.title('1/2 回目：ヘッダーの終了位置をクリックしてください')
 
 			# ヘッダーとフッターの線を削除
 			self.canvas1.delete("header")
@@ -105,8 +108,9 @@ if __name__ == "__main__":
 		exit()
 
 	# ページ番号の入力
-	page_no = input("どのページをもとに設定を行いますか: ")
+	page_no = input("何ページをもとに設定を行いますか: ")
 	page_no = int(page_no) if is_number(page_no) else 0
+	if page_no != 0: page_no = page_no - 1
 
 	# PDFドキュメントを開く
 	with fitz.open(sys.argv[1]) as doc:

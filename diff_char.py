@@ -38,8 +38,8 @@ def get_chars(page):
 #	char1 : ページから抽出した文字 (bbox付き)
 #	char2 : ページから抽出した文字 (bbox付き)
 # 戻り値
-#	removed : 削除した文字の文字リスト
-#	removed : 削除した文字の文字リスト
+#	removed : 削除した文字のbboxリスト
+#	added   : 追加した文字のbboxリスト
 # ---------------------------------------------------------
 def diff_chars(chars1, chars2):
 	seq1 = [c[0] for c in chars1]
@@ -59,11 +59,11 @@ def diff_chars(chars1, chars2):
 			continue
 
 		if code == "-":
-			removed.append(chars1[idx1])
+			removed.append(chars1[idx1][1])
 			idx1 += 1
 
 		elif code == "+":
-			added.append(chars2[idx2])
+			added.append(chars2[idx2][1])
 			idx2 += 1
 
 		else:
@@ -87,12 +87,12 @@ def merge_bboxes(char_list, x_gap=2, y_gap=2):
 		return []
 
 	# y座標でソート（行単位でまとめる）
-	char_list = sorted(char_list, key=lambda x: (x[1][1], x[1][0]))
+	char_list = sorted(char_list, key=lambda x: (x[1], x[0]))
 
 	merged = []
-	current = list(char_list[0][1])
+	current = list(char_list[0])
 
-	for _, bbox in char_list[1:]:
+	for bbox in char_list:
 		x0, y0, x1, y1 = bbox
 
 		# 同じ行（y座標が近い）かつ横に近接している場合は結合
@@ -109,14 +109,32 @@ def merge_bboxes(char_list, x_gap=2, y_gap=2):
 
 
 # ---------------------------------------------------------
+# ヘッダー・フッター除去
+# 
+# 引数
+#	boxes		: 差異のbboxリスト
+#	page_height : ページの高さ
+# 戻り値
+#	ヘッダー・フッターを除外したbboxリスト
+# ---------------------------------------------------------
+def remove_header_footer(boxes, page_height):
+	filtered = []
+	for bbox in boxes:
+		x0, y0, x1, y1 = bbox
+		if y1 > settings.HEADER_HEIGHT and y0 < (page_height - settings.FOOTER_HEIGHT):
+			filtered.append(bbox)
+	
+	return filtered
+
+# ---------------------------------------------------------
 # テキスト比較 (文字単位) メイン処理
 # 
 # 引数
 #	page : ページ (PyMuPDF)
 #	page : ページ (PyMuPDF)
 # 戻り値
-#	added_bboxes   : 追加された画像のリスト
 #	removed_bboxes : 削除された画像のリスト
+#	added_bboxes   : 追加された画像のリスト
 # ---------------------------------------------------------
 def compare(page1, page2):
 	# ページ内の全ての文字を抽出する
@@ -124,12 +142,16 @@ def compare(page1, page2):
 	chars2 = get_chars(page2)
 
 	# 比較
-	removed, added = diff_chars(chars1, chars2)
+	removed_bboxes, added_bboxes = diff_chars(chars1, chars2)
+
+	# ヘッダーとフッターを除外
+	removed_bboxes = remove_header_footer(removed_bboxes, page1.rect.height)
+	added_bboxes = remove_header_footer(added_bboxes, page2.rect.height)
 
 	# 隣り合う差分はbboxを結合
-	removed_boxes = merge_bboxes(removed)
-	added_boxes = merge_bboxes(added)
+	removed_bboxes = merge_bboxes(removed_bboxes)
+	added_bboxes = merge_bboxes(added_bboxes)
 
-	return added_boxes, removed_boxes
+	return removed_bboxes, added_bboxes
 
 

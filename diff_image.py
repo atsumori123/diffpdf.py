@@ -1,5 +1,6 @@
 import fitz  # PyMuPDF
 import cv2
+import settings
 import numpy as np
 
 # ---------------------------------------------------------
@@ -77,8 +78,8 @@ def is_same_shape(des1, des2):
 #	old_list : 画像とその情報のリスト
 #	new_list : 画像とその情報のリスト
 # 戻り値
-#	added_bboxes   : 追加された画像のリスト
 #	removed_bboxes : 削除された画像のリスト
+#	added_bboxes   : 追加された画像のリスト
 # ---------------------------------------------------------
 def compare_independently(old_list, new_list):
 	# old_listの画像を1つずつ処理
@@ -115,7 +116,26 @@ def compare_independently(old_list, new_list):
 	removed_bboxes = [item["bbox"] for item in old_list if not item["matched"]]
 	added_bboxes = [item["bbox"] for item in new_list if not item["matched"]]
 	
-	return added_bboxes, removed_bboxes
+	return removed_bboxes, added_bboxes
+
+
+# ---------------------------------------------------------
+# ヘッダー・フッター除去
+# 
+# 引数
+#	boxes		: 差異のbboxリスト
+#	page_height : ページの高さ
+# 戻り値
+#	ヘッダー・フッターを除外したbboxリスト
+# ---------------------------------------------------------
+def remove_header_footer(boxes, page_height):
+	filtered = []
+	for bbox in boxes:
+		x0, y0, x1, y1 = bbox
+		if y1 > settings.HEADER_HEIGHT and y0 < (page_height - settings.FOOTER_HEIGHT):
+			filtered.append(bbox)
+	
+	return filtered
 
 
 # ---------------------------------------------------------
@@ -125,12 +145,19 @@ def compare_independently(old_list, new_list):
 #	page : ページ (PyMuPDF)
 #	page : ページ (PyMuPDF)
 # 戻り値
-#	added_bboxes   : 追加された画像のリスト
 #	removed_bboxes : 削除された画像のリスト
+#	added_bboxes   : 追加された画像のリスト
 # ---------------------------------------------------------
 def compare(page1, page2):
 	old_data = get_images_with_geometry(page1)
 	new_data = get_images_with_geometry(page2)
 
-	return compare_independently(old_data, new_data)
+	# 比較
+	removed_bboxes, added_bboxes = compare_independently(old_data, new_data)
+
+	# ヘッダーとフッターを除外
+	removed_bboxes = remove_header_footer(removed_bboxes, page1.rect.height)
+	added_bboxes = remove_header_footer(added_bboxes, page2.rect.height)
+
+	return removed_bboxes, added_bboxes
 

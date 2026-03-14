@@ -12,18 +12,18 @@ import settings
 #	page_no		  : ページ番号
 #	page1		  : オーバレイのベースとなるページ (PyMuPDF)
 #	page2		  : オーバレイのベースとなるページ (PyMuPDF)
-#	added_boxes	  : 追加された要素のリスト (bbox)
-#	removed_boxes : 削除された要素のリスト (bbox)
+#	added_bboxes  : 追加された要素のリスト (bbox)
+#	removed_bboxes: 削除された要素のリスト (bbox)
 #	output_dir	  : 差分結果出力先ディレクトリ
 # 戻り値
 #	なし
 # ---------------------------------------------------------
-def output_diff(page_no, page1, page2, added_boxes, removed_boxes, output_dir):
+def output_diff(page_no, page1, page2, added_bboxes, removed_bboxes, output_dir):
 	# キャンバスを作る
 	text1_shape = page1.new_shape()
 
 	# テキストの差異をキャンバスに描く
-	for bbox in removed_boxes:
+	for bbox in removed_bboxes:
 		text1_shape.draw_rect(bbox)
 
 	# キャンバスに描いた図形に色や線のスタイルを適用して描画を確定させる
@@ -40,7 +40,7 @@ def output_diff(page_no, page1, page2, added_boxes, removed_boxes, output_dir):
 	text2_shape = page2.new_shape()
 
 	# 画像の差異をキャンバスに描く
-	for bbox in added_boxes:
+	for bbox in added_bboxes:
 		text2_shape.draw_rect(bbox)
 
 	# キャンバスに描いた図形に色や線のスタイルを適用して描画を確定させる
@@ -78,24 +78,6 @@ def output_diff(page_no, page1, page2, added_boxes, removed_boxes, output_dir):
 
 
 # ---------------------------------------------------------
-# ヘッダー・フッター除去
-# 
-# 引数
-#	boxes : 差異のbboxリスト
-# 戻り値
-#	ヘッダー・フッターを除外したbboxリスト
-# ---------------------------------------------------------
-def remove_header_footer(boxes, page_height, header_height, footer_height):
-	filtered = []
-	for bbox in boxes:
-		x0, y0, x1, y1 = bbox
-		if y1 > header_height and y0 < (page_height - footer_height):
-			filtered.append(bbox)
-	
-	return filtered
-
-
-# ---------------------------------------------------------
 # 比較メイン処理
 # 
 # 引数
@@ -126,24 +108,20 @@ def compare_pdfs(pdf1_path, pdf2_path, output_dir):
 			# --------------
 			# テキスト比較
 			# --------------
-			text_added = text_removed = []
+			text_removed = text_added = []
 			if "text" in settings.COMPARISON_TYPE:
-				text_added, text_removed = diff_char.compare(doc1[i], doc2[i])
+				text_removed, text_added = diff_char.compare(doc1[i], doc2[i])
 
 			# --------------
 			# 画像比較
 			# --------------
-			image_added_boxes = image_removed_boxes = []
+			image_removed = image_added = []
 			if "image" in settings.COMPARISON_TYPE:
-				image_added_boxes, text_removed = diff_image.compare(doc1[i], doc2[i])
+				image_removed, image_added = diff_image.compare(doc1[i], doc2[i])
 
 			# テキスト比較結果と画像比較結果を結合
-			added = text_added + image_added_boxes
-			removed = text_removed + image_removed_boxes
-
-			# ヘッダーとフッター領域を除外
-			added = remove_header_footer(added, doc1[i].rect.height, settings.HEADER_HEIGHT, settings.FOOTER_HEIGHT)
-			removed = remove_header_footer(removed, doc2[i].rect.height, settings.HEADER_HEIGHT, settings.FOOTER_HEIGHT)
+			removed = text_removed + image_removed
+			added = text_added + image_added
 
 			# 結果の出力
 			if len(added) + len(removed):
